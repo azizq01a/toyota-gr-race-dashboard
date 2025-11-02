@@ -1,0 +1,40 @@
+.app {
+  display: flex;
+  font-family: Arial, sans-serif;
+}
+
+.sidebar {
+  width: 200px;
+  background: #1e1e2f;
+  color: white;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar button {
+  background: none;
+  border: none;
+  color: white;
+  padding: 15px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.main-content {
+  flex: 1;
+  padding: 20px;
+  background: #f4f4f4;
+}
+
+.navbar {
+  background: #222;
+  color: white;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.dashboard, .strategy-panel {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+}

@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PitPilotX - Toyota Racing Dashboard</title>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; background-color:#0d0d0d; color:white; }
+  .navbar { display:flex; background-color:#bf0000; }
+  .navbar button { flex:1; padding:15px; color:white; background:none; border:none; cursor:pointer; font-size:16px; }
+  .navbar button:hover { background-color:#a50000; }
+  .tab-content { padding:20px; display:none; }
+  .active { display:block; }
+  .card { background-color:#111; padding:15px; margin-bottom:15px; border-left:4px solid #bf0000; border-radius:6px; }
+  input, button { padding:8px; margin:5px; border-radius:4px; border:none; }
+  button { background-color:#bf0000; color:white; cursor:pointer; }
+  #progressBar { width:100%; height:10px; background:#333; border-radius:5px; overflow:hidden; margin-top:5px; }
+  #progress { height:100%; width:0%; background:#bf0000; }
+  pre { white-space: pre-wrap; word-wrap: break-word; }
+
+  /* Toyota GR-style AI Panel */
+  #ai-panel { background: linear-gradient(145deg, #0d0d0d, #1b1b1b); color: #eaeaea;
+    padding: 20px; border-radius: 16px; box-shadow: 0 0 20px rgba(0,0,0,0.6); margin-top: 25px;
+    font-family: 'Orbitron', sans-serif; }
+  #ai-insights { background:#0e0e0e; padding:10px; border-left:4px solid #00eaff; border-radius:8px; }
+
+  /* Tire Gauge */
+  #tireGaugeContainer {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background-color: #111;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-left: 4px solid #bf0000;
+  }
+  #tireGauge {
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    border: 10px solid #222;
+    position: relative;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.7), 0 0 10px rgba(191,0,0,0.15);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:700;
+    font-size:22px;
+    color:#fff;
+  }
+
+  /* Notification banner */
+  #criticalBanner {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(90deg,#440000,#8b0000);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+    display:none;
+    z-index:9999;
+    font-weight:700;
+  }
+
+  /* small control area for mute */
+  #alertControls { display:flex; gap:10px; align-items:center; }
+  .mutebtn { background:#222; color:#fff; padding:6px 10px; border-radius:6px; cursor:pointer; border:1px solid #444; }
+  .mutebtn.active { background:#bf0000; border-color:#bf0000; }
+</style>
+</head>
+<body>
+<div class="navbar">
+  <button onclick="openTab('dashboard')">Dashboard</button>
+  <button onclick="openTab('strategy')">Strategy</button>
+  <button onclick="openTab('replay')">Replay</button>
+  <button onclick="openTab('driver')">Driver Insights</button>
+</div>
+
+<!-- critical banner -->
+<div id="criticalBanner">🚨 Tire Wear Critical — Pit Stop Recommended!</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="tab-content active">
+  <h1>Dashboard</h1>
+  <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
+    <div style="flex:1; min-width:280px;">
+      <div class="card">Speed: <span id="speed">0</span> km/h</div>
+      <div id="speedChart" style="height:220px;"></div>
+      <div class="card">RPM: <span id="rpm">0</span></div>
+      <div id="rpmChart" style="height:120px;"></div>
+    </div>
+
+    <div style="width:320px;">
+      <div class="card">Fuel: <span id="fuel">0</span>%</div>
+      <div id="fuelChart" style="height:120px;"></div>
+      <div class="card">Tire Temp: <span id="tire">0</span>°C</div>
+
+      <!-- Tire Gauge & controls -->
+      <div id="tireGaugeContainer">
+        <div id="tireGauge" data-health="100">100%</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div id="alertControls">
+            <button id="muteBtn" class="mutebtn">🔊 Unmuted</button>
+          </div>
+          <small style="color:#aaa;">Tire Health (visual)</small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STRATEGY -->
+<div id="strategy" class="tab-content">
+  <h1>Strategy</h1>
+  <div class="card">
+    <label for="pitLap">Select Lap for Pit Stop:</label>
+    <input type="number" id="pitLap" value="5" min="1" max="50" />
+    <button onclick="simulatePit()">Simulate Pit Stop</button>
+  </div>
+  <div class="card" id="pitResult">Pit stop result will appear here.</div>
+  <div class="card">
+    <h3>Upload your telemetry files</h3>
+    <input type="file" id="fileInput" accept=".csv,.json,.zip" />
+    <button onclick="loadFile()">Load & Update Dashboard</button>
+    <pre id="fileData" style="background:#222; padding:10px; border-radius:4px; overflow:auto; max-height:200px;"></pre>
+  </div>
+</div>
+
+<!-- REPLAY -->
+<div id="replay" class="tab-content">
+  <h1>Replay</h1>
+  <div class="card" id="replayDisplay">Replay will be updated from loaded data.</div>
+  <div id="progressBar"><div id="progress"></div></div>
+</div>
+
+<!-- DRIVER INSIGHTS -->
+<div id="driver" class="tab-content">
+  <h1>Driver Insights</h1>
+  <div id="insightChart" style="height:400px;"></div>
+  <div class="card" id="driverAnalysis">Driver Performance Summary will appear here.</div>
+  <div id="ai-panel">
+    <h2>🤖 PitPilotX Strategy AI</h2>
+    <div id="ai-insights">Waiting for AI recommendations...</div>
+  </div>
+</div>
+
+<script>
+/* --------------------------
+   State & utils
+   -------------------------- */
+let dashboardData=[], replayData=[], timeData=[], speedData=[], rpmData=[], fuelData=[], tireData=[];
+let driverInsightsData=[];
+let t=0;
+let muted=false;
+
+/* --------------------------
+   Audio (WebAudio API) - soft beep
+   -------------------------- */
+const audioCtx = (window.AudioContext || window.webkitAudioContext) ? new (window.AudioContext || window.webkitAudioContext)() : null;
+function playSoftBeep(){
+  if(muted || !audioCtx) return;
+  const dur = 0.18; // short soft beep
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.value = 880; // pitch
+  g.gain.value = 0.04; // very soft
+  o.connect(g);
+  g.connect(audioCtx.destination);
+  o.start();
+  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+  o.stop(audioCtx.currentTime + dur);
+}
+
+/* --------------------------
+   UI helpers
+   -------------------------- */
+function openTab(tabId){
+  document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  if(tabId==='driver') showDriverInsights();
+}
+
+function simulatePit(){
+  const pitLap = parseInt(document.getElementById('pitLap').value)||5;
+  const pitDelta = Math.floor(Math.random()*15+8);
+  document.getElementById('pitResult').innerText = `Simulated pit at lap ${pitLap}. Estimated pit delta: ${pitDelta}s`;
+}
+
+/* --------------------------
+   Mute button wiring
+   -------------------------- */
+const muteBtn = document.getElementById('muteBtn');
+muteBtn.addEventListener('click', ()=>{
+  muted = !muted;
+  muteBtn.classList.toggle('active', !muted);
+  muteBtn.textContent = muted ? '🔇 Muted' : '🔊 Unmuted';
+});
+
+/* --------------------------
+   File load & CSV parse
+   -------------------------- */
+async function loadFile(){
+  const input = document.getElementById('fileInput');
+  const file = input.files[0];
+  if(!file) { alert('Please select a file!'); return; }
+
+  if(file.name.endsWith('.zip')){
+    const jszip = new JSZip();
+    const zip = await jszip.loadAsync(await file.arrayBuffer());
+    for(const name of Object.keys(zip.files)){
+      if(name.endsWith('.csv')){
+        const csv = await zip.files[name].async('string');
+        parseCSV(csv);
+        document.getElementById('fileData').innerText = csv;
+        alert('CSV from ZIP loaded.');
+        break;
+      }
+    }
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const csv = e.target.result;
+      document.getElementById('fileData').innerText = csv;
+      parseCSV(csv);
+    };
+    reader.readAsText(file);
+  }
+}
+
+function parseCSV(csv){
+  const lines = csv.split('\n').filter(l=>l.trim().length>0);
+  const delimiter = csv.includes(';') ? ';' : ',';
+  const headers = lines[0].split(delimiter).map(h=>h.trim().toLowerCase());
+  const lapIdx = headers.findIndex(h=>h.includes('lap'));
+  const speedIdx = headers.findIndex(h=>h.includes('speed_calc') || h==='kph' || h.includes('speed'));
+  if(lapIdx===-1 || speedIdx===-1){
+    alert("⚠️ Invalid CSV: missing 'lap' or 'speed' columns!");
+    return;
+  }
+  dashboardData = []; driverInsightsData = [];
+  for(let i=1;i<lines.length;i++){
+    const cols = lines[i].split(delimiter).map(c=>c.trim());
+    const lap = parseInt(cols[lapIdx]);
+    const speed = parseFloat(cols[speedIdx]);
+    if(!isNaN(speed)){
+      const tireWearPct = Math.min(100, lap * 2); // e.g., simple model
+      const tireHealth = Math.max(0, 100 - tireWearPct); // health drops as wear increases
+      dashboardData.push({
+        Lap: lap,
+        Speed: speed,
+        RPM: speed * 50,
+        Fuel: Math.max(0, 100 - lap*2),
+        TireTemp: 75 + (lap % 5) * 2,
+        TireWearPercent: tireWearPct,
+        TireHealth: tireHealth
+      });
+      driverInsightsData.push({Lap:lap, Speed: speed, TireWearPercent: tireWearPct, TireHealth: tireHealth});
+    }
+  }
+  replayData = [...dashboardData];
+  alert('✅ Data loaded successfully!');
+}
+
+/* --------------------------
+   Tire gauge & banner
+   -------------------------- */
+function updateTireGauge(health){
+  const g = document.getElementById('tireGauge');
+  g.setAttribute('data-health', Math.round(health) + '%');
+  let color = '#00c853'; // green
+  if(health < 70 && health >= 40) color = '#ffbf00'; // yellow
+  else if(health < 40) color = '#ff3b30'; // red
+  // convert health (0-100) to degrees on conic gradient (0-360)
+  const deg = Math.max(0, Math.min(100, health)) * 3.6;
+  g.style.background = `conic-gradient(${color} ${deg}deg, #222 ${deg}deg)`;
+  g.textContent = `${Math.round(health)}%`;
+}
+
+function showCriticalBanner(show){
+  const banner = document.getElementById('criticalBanner');
+  banner.style.display = show ? 'block' : 'none';
+}
+
+/* --------------------------
+   Driver Insights view
+   -------------------------- */
+function showDriverInsights(){
+  const div = document.getElementById('insightChart');
+  if(!driverInsightsData || driverInsightsData.length===0){
+    div.innerHTML = "<p style='color:#aaa;'>⚠️ No CSV data loaded yet.</p>";
+    document.getElementById('driverAnalysis').innerHTML = '';
+    document.getElementById('ai-insights').innerHTML = 'Waiting for AI recommendations...';
+    return;
+  }
+  const laps = driverInsightsData.map(d=>d.Lap);
+  const speeds = driverInsightsData.map(d=>d.Speed);
+  const wear = driverInsightsData.map(d=>d.TireWearPercent);
+
+  const trace1 = { x:laps, y:speeds, name:"Speed (km/h)", type:"scatter", mode:"lines+markers", line:{color:"#00eaff"} };
+  const trace2 = { x:laps, y:wear, name:"Tire Wear (%)", yaxis:"y2", type:"scatter", mode:"lines", line:{color:"#ffbf00", dash:"dot"} };
+
+  const layout = {
+    paper_bgcolor:"#0d0d0d", plot_bgcolor:"#0d0d0d", font:{color:"white"},
+    title:"Driver Insights - CSV Data",
+    xaxis:{title:"Lap"},
+    yaxis:{title:"Speed (km/h)"},
+    yaxis2:{title:"Tire Wear (%)", overlaying:"y", side:"right"},
+    legend:{x:0.1, y:1.1, orientation:"h"}
+  };
+  Plotly.newPlot(div, [trace1, trace2], layout);
+
+  const avgSpeed = (speeds.reduce((a,b)=>a+b,0) / speeds.length) || 0;
+  const latestWear = wear[wear.length-1] || 0;
+  const predictedPitIn = 3; // placeholder
+
+  document.getElementById('driverAnalysis').innerHTML = `
+    <h3>Driver Performance Summary</h3>
+    <p>Driver maintained strong performance with current average speed <strong>${avgSpeed.toFixed(1)} km/h</strong>.</p>
+  `;
+  document.getElementById('ai-insights').innerHTML = `
+    <h4>AI Recommendations:</h4>
+    <ul>
+      <li>🏎️ Speed: ${avgSpeed.toFixed(1)} km/h average</li>
+      <li>🛞 Tire Management: Current tire wear ${latestWear.toFixed(0)}% — monitor closely</li>
+      <li>⛽ Fuel Strategy: Optimal consumption, pit estimated in ${predictedPitIn} laps</li>
+    </ul>
+  `;
+}
+
+/* --------------------------
+   Dashboard ticker (simulate "real-time")
+   -------------------------- */
+setInterval(()=>{
+  if(dashboardData.length>0){
+    const current = dashboardData.shift();
+    timeData.push(t++);
+    speedData.push(current.Speed);
+    rpmData.push(current.RPM);
+    fuelData.push(current.Fuel);
+    tireData.push(current.TireTemp);
+
+    document.getElementById('speed').innerText = current.Speed.toFixed(1);
+    document.getElementById('rpm').innerText = current.RPM.toFixed(0);
+    document.getElementById('fuel').innerText = current.Fuel.toFixed(0);
+    document.getElementById('tire').innerText = current.TireTemp.toFixed(1);
+
+    updateTireGauge(current.TireHealth);
+
+    // if health drops under threshold -> show banner + soft beep
+    if(current.TireHealth <= 35){
+      // critical: show banner and beep
+      showCriticalBanner(true);
+      playSoftBeep();
+      // hide banner after a short while (but keep showing again if repeated)
+      setTimeout(()=>showCriticalBanner(false), 5000);
+    } else if(current.TireHealth <= 60){
+      // warning only show banner (no loudness)
+      showCriticalBanner(true);
+      setTimeout(()=>showCriticalBanner(false), 4000);
+    }
+
+    // redraw a simple speed chart
+    Plotly.newPlot('speedChart',[{x:timeData,y:speedData,type:'scatter',mode:'lines',line:{color:'#bf0000'}}],{margin:{t:0},paper_bgcolor:'#0d0d0d',plot_bgcolor:'#0d0d0d',font:{color:'white'}});
+  }
+}, 900); // slightly faster cadence
+</script>
+</body>
+</html>
