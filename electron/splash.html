@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Splash Screen</title>
+<style>
+  body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #101010;
+    flex-direction: column;
+  }
+  img {
+    width: 300px;
+    animation: zoomIn 4s forwards;
+  }
+  @keyframes zoomIn {
+    from { transform: scale(0.5); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+  <img src="assets/logo.png" alt="Toyota APPS">
+  <audio autoplay>
+    <source src="assets/sound.mp3" type="audio/mpeg">
+  </audio>
+<script>
+    // الانتقال إلى frontend بعد 24 ثانية
+    setTimeout(() => {
+      window.location.href = '../frontend/index.html';
+    }, 24000);
+  </script>
+</body>
+</html>
